@@ -11,3 +11,4 @@ casm = true
 [dependencies]
 starknet = ">=2.6.4"
 openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.14.0" }
+cubit = { git = "https://github.com/influenceth/cubit.git" }
