@@ -1,0 +1,3 @@
+The design is based on a simple premise - users staking into a protocol at any point in time should not have their rewards get diluted due to any new stake coming in.
+
+Let R be the current total reward available to be claimed by stakers and S the sum of total stake in the system. Let a new stake s' enter the system. We increase the total reward pool by an amount **R.(s'/S)** and mark this reward as claimed by the user who staked new stake s'. Till actual new reward is added to the system, user staking s' will not be able to claim any reward. This prevents the existing stake rewards from getting diluted.
