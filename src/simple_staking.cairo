@@ -1,12 +1,13 @@
 #[starknet::component]
 pub mod SimpleStakingComponent {
     use starknet::ContractAddress;
-    use starknet::get_caller_address;
+    use starknet::{get_caller_address, get_contract_address};
     use openzeppelin::access::ownable::OwnableComponent;
     use simple_staking::interfaces::istaking::ISimpleStaking;
     use openzeppelin::access::ownable::interface::IOwnable;
     use cubit::f128::types::fixed::{Fixed, FixedTrait};
     use core::traits::TryInto;
+    use simple_staking::interfaces::ierc20::{IERC20DispatcherTrait, IERC20Dispatcher};
 
     #[derive(Drop, starknet::Store)]
     pub struct ShareStatus {
@@ -22,6 +23,8 @@ pub mod SimpleStakingComponent {
         real_withdrawn_rewards: u128,
         user_status: LegacyMap<ContractAddress, ShareStatus>,
         total_shares: u128,
+        reward_token: ContractAddress,
+        stake_token: ContractAddress
     }
 
     #[event]
@@ -58,23 +61,11 @@ pub mod SimpleStakingComponent {
     > of ISimpleStaking<ComponentState<TContractState>> {
     
 
-        fn add_rewards(ref self: ComponentState<TContractState>, amount: u128) {
-            let ownable_component = get_dep_component!(@self, Ownable);
-            let caller = get_caller_address();
-            assert(caller == ownable_component.owner(), 'UNAUTHORIZED');
-            self.real_total_rewards.write(self.real_total_rewards.read() + amount);
-            self.total_rewards.write(self.total_rewards.read() + amount);
-        }
-
-        // TODO - Withdraw rewards
-    }
-
-    #[generate_trait]
-    pub impl InternalImpl<
-        TContractState, +HasComponent<TContractState>
-    > of InternalTrait<TContractState> {
-
         fn add_share(ref self: ComponentState<TContractState>, user: ContractAddress, user_share: u128) {
+
+            let stake_token = IERC20Dispatcher{ contract_address: self.stake_token.read()};
+            stake_token.transfer_from(user, get_contract_address(), user_share.into());
+            // We are explicitly limiting the amount staked and rewarded to u128 for simplicity
             let reward_increase:u128 = self.inflation(user_share);
             self.total_rewards.write(self.total_rewards.read() + reward_increase);
             self.withdrawn_rewards.write(self.withdrawn_rewards.read() + reward_increase);
@@ -87,6 +78,59 @@ pub mod SimpleStakingComponent {
                 withdrawn_rewards: user_status.withdrawn_rewards + reward_increase
             };
             self.user_status.write(user, updated_user_status);
+        }
+
+        fn add_rewards(ref self: ComponentState<TContractState>, amount: u128) {
+            let ownable_component = get_dep_component!(@self, Ownable);
+            let caller = get_caller_address();
+            assert(caller == ownable_component.owner(), 'UNAUTHORIZED');
+            self.real_total_rewards.write(self.real_total_rewards.read() + amount);
+            self.total_rewards.write(self.total_rewards.read() + amount);
+        }
+
+        // @notice - Claim function to be called by user to claim accumulated rewards
+        // This function transfers the reward tokens to the user and returns the number of tokens transferred
+        fn claim_rewards(ref self: ComponentState<TContractState>, user: ContractAddress) -> u128 {
+            
+            let user_status = self.user_status.read(user);
+            let inflation = self.inflation(user_status.shares);
+            let rewards_remaining = self.total_rewards.read() - self.withdrawn_rewards.read();
+            let rewards_withdrawn_by_user = user_status.withdrawn_rewards;
+            let user_portion = if rewards_withdrawn_by_user > inflation {
+                0
+            } else {
+                inflation - rewards_withdrawn_by_user
+            };
+
+            let withdrawable_amount = self.min(user_portion, rewards_remaining);
+            let updated_user_status = ShareStatus {
+                shares: user_status.shares,
+                withdrawn_rewards: user_status.withdrawn_rewards + withdrawable_amount
+            };
+            self.user_status.write(user, updated_user_status);
+            self.withdrawn_rewards.write(self.withdrawn_rewards.read() + withdrawable_amount);
+            self
+                .real_withdrawn_rewards
+                .write(self.real_withdrawn_rewards.read() + withdrawable_amount);
+            let reward_token = IERC20Dispatcher{contract_address: self.reward_token.read()};
+
+            // TODO: Check we have enough tokens to send to user
+            reward_token.transfer(user, withdrawable_amount.into());
+            withdrawable_amount
+        }
+
+        // TODO - Withdraw rewards
+    }
+
+    #[generate_trait]
+    pub impl InternalImpl<
+        TContractState, +HasComponent<TContractState>
+    > of InternalTrait<TContractState> {
+
+        fn initializer(ref self: ComponentState<TContractState>, reward_token: ContractAddress, stake_token: ContractAddress) {
+
+            self.reward_token.write(reward_token);
+            self.stake_token.write(stake_token);
         }
 
         fn inflation(self: @ComponentState<TContractState>, user_share: u128) -> u128 {
@@ -115,29 +159,5 @@ pub mod SimpleStakingComponent {
             }
         }
 
-        fn claim_rewards(ref self: ComponentState<TContractState>, user: ContractAddress) -> u128 {
-            
-            let user_status = self.user_status.read(user);
-            let inflation = self.inflation(user_status.shares);
-            let rewards_remaining = self.total_rewards.read() - self.withdrawn_rewards.read();
-            let rewards_withdrawn_by_user = user_status.withdrawn_rewards;
-            let user_portion = if rewards_withdrawn_by_user > inflation {
-                0
-            } else {
-                inflation - rewards_withdrawn_by_user
-            };
-
-            let withdrawable_amount = self.min(user_portion, rewards_remaining);
-            let updated_user_status = ShareStatus {
-                shares: user_status.shares,
-                withdrawn_rewards: user_status.withdrawn_rewards + withdrawable_amount
-            };
-            self.user_status.write(user, updated_user_status);
-            self.withdrawn_rewards.write(self.withdrawn_rewards.read() + withdrawable_amount);
-            self
-                .real_withdrawn_rewards
-                .write(self.real_withdrawn_rewards.read() + withdrawable_amount);
-            withdrawable_amount
-        }
     }
 }

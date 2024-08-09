@@ -3,9 +3,9 @@ pub mod ConsumerMock {
 
     use simple_staking::simple_staking::SimpleStakingComponent;
     use openzeppelin::access::ownable::OwnableComponent;
-
-    component!(path: OwnableComponent, storage: ownable_storage, event: OwnableEvent);
-    component!(path: SimpleStakingComponent, storage: simple_staking_storage, event: SimpleStakingEvent );
+    use starknet::ContractAddress;
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: SimpleStakingComponent, storage: simple_staking, event: SimpleStakingEvent );
 
     #[abi(embed_v0)]
     impl SimpleStakingImpl = SimpleStakingComponent::SimpleStakingImpl<ContractState>;
@@ -13,13 +13,16 @@ pub mod ConsumerMock {
     #[abi(embed_v0)]
     impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
 
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl SimpleStakingInternalImpl = SimpleStakingComponent::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
 
         #[substorage(v0)]
-        simple_staking_storage: SimpleStakingComponent::Storage,
+        simple_staking: SimpleStakingComponent::Storage,
         #[substorage(v0)]
-        ownable_storage: OwnableComponent::Storage
+        ownable: OwnableComponent::Storage
     }
 
     #[event]
@@ -32,4 +35,9 @@ pub mod ConsumerMock {
     }
 
 
+    #[constructor]
+    fn constructor(ref self: ContractState, owner: ContractAddress, reward_token: ContractAddress, stake_token: ContractAddress) {
+        self.ownable.initializer(owner);
+        self.simple_staking.initializer(reward_token, stake_token);
+    }
 }
