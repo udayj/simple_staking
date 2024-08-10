@@ -1,43 +1,25 @@
-#[starknet::contract]
-pub mod ConsumerMock {
+use core::array::ArrayTrait;
+use starknet::{ContractAddress, contract_address_const, 
+        testing::{set_contract_address, pop_log_raw},
+};
+use starknet::syscalls::{deploy_syscall, call_contract_syscall};
 
-    use simple_staking::simple_staking::SimpleStakingComponent;
-    use openzeppelin::access::ownable::OwnableComponent;
-    use starknet::ContractAddress;
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
-    component!(path: SimpleStakingComponent, storage: simple_staking, event: SimpleStakingEvent );
+use super::consumer_mock::ConsumerMock;
 
-    #[abi(embed_v0)]
-    impl SimpleStakingImpl = SimpleStakingComponent::SimpleStakingImpl<ContractState>;
+fn deploy(
+        contract_class_hash: felt252, salt: felt252, calldata: Array<felt252>
+    ) -> ContractAddress {
+        let (address, _) = deploy_syscall(
+            contract_class_hash.try_into().unwrap(), salt, calldata.span(), false
+        )
+            .unwrap();
+        address
+}
 
-    #[abi(embed_v0)]
-    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
+fn setup() {
 
-    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-    impl SimpleStakingInternalImpl = SimpleStakingComponent::InternalImpl<ContractState>;
-
-    #[storage]
-    struct Storage {
-
-        #[substorage(v0)]
-        simple_staking: SimpleStakingComponent::Storage,
-        #[substorage(v0)]
-        ownable: OwnableComponent::Storage
-    }
-
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        #[flat]
-        SimpleStakingEvent: SimpleStakingComponent::Event,
-        #[flat]
-        OwnableEvent: OwnableComponent::Event
-    }
-
-
-    #[constructor]
-    fn constructor(ref self: ContractState, owner: ContractAddress, reward_token: ContractAddress, stake_token: ContractAddress) {
-        self.ownable.initializer(owner);
-        self.simple_staking.initializer(reward_token, stake_token);
-    }
+    let owner: ContractAddress = contract_address_const::<1>();
+    // Deploy ERC20
+    // Deploy ConsumerMock
+    // Stake, Claim Rewards
 }
