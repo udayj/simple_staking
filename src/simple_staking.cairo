@@ -61,8 +61,9 @@ pub mod SimpleStakingComponent {
     > of ISimpleStaking<ComponentState<TContractState>> {
     
 
-        fn add_share(ref self: ComponentState<TContractState>, user: ContractAddress, user_share: u128) {
+        fn add_share(ref self: ComponentState<TContractState>, user_share: u128) {
 
+            let user = get_caller_address();
             let stake_token = IERC20Dispatcher{ contract_address: self.stake_token.read()};
             stake_token.transfer_from(user, get_contract_address(), user_share.into());
             // We are explicitly limiting the amount staked and rewarded to u128 for simplicity
@@ -70,7 +71,7 @@ pub mod SimpleStakingComponent {
             self.total_rewards.write(self.total_rewards.read() + reward_increase);
             self.withdrawn_rewards.write(self.withdrawn_rewards.read() + reward_increase);
             self.total_shares.write(self.total_shares.read() + user_share);
-            let user = get_caller_address();
+           
             let user_status:ShareStatus = self.user_status.read(user);
             let updated_shares:u128 = user_status.shares  + user_share;
             let updated_user_status = ShareStatus {
@@ -84,14 +85,17 @@ pub mod SimpleStakingComponent {
             let ownable_component = get_dep_component!(@self, Ownable);
             let caller = get_caller_address();
             assert(caller == ownable_component.owner(), 'UNAUTHORIZED');
+            let reward_token = IERC20Dispatcher{ contract_address: self.reward_token.read()};
+            reward_token.transfer_from(caller, get_contract_address(), amount.into());
             self.real_total_rewards.write(self.real_total_rewards.read() + amount);
             self.total_rewards.write(self.total_rewards.read() + amount);
         }
 
         // @notice - Claim function to be called by user to claim accumulated rewards
         // This function transfers the reward tokens to the user and returns the number of tokens transferred
-        fn claim_rewards(ref self: ComponentState<TContractState>, user: ContractAddress) -> u128 {
+        fn claim_rewards(ref self: ComponentState<TContractState>) -> u128 {
             
+            let user = get_caller_address();
             let user_status = self.user_status.read(user);
             let inflation = self.inflation(user_status.shares);
             let rewards_remaining = self.total_rewards.read() - self.withdrawn_rewards.read();
@@ -119,6 +123,22 @@ pub mod SimpleStakingComponent {
             withdrawable_amount
         }
 
+        fn get_claimable_rewards(self: @ComponentState<TContractState>, user:ContractAddress) ->  u128 {
+
+            let user_status = self.user_status.read(user);
+            let inflation = self.inflation(user_status.shares);
+            let rewards_remaining = self.total_rewards.read() - self.withdrawn_rewards.read();
+            let rewards_withdrawn_by_user = user_status.withdrawn_rewards;
+            let user_portion = if rewards_withdrawn_by_user > inflation {
+                0
+            } else {
+                inflation - rewards_withdrawn_by_user
+            };
+
+            let withdrawable_amount = self.min(user_portion, rewards_remaining);
+            withdrawable_amount
+
+        }
         // TODO - Withdraw rewards
     }
 

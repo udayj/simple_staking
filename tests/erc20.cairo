@@ -44,13 +44,19 @@ pub mod ERC20 {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, name: ByteArray, symbol: ByteArray, decimals: ByteArray, initiator:ContractAddress) {
+    fn constructor(
+        ref self: ContractState, 
+        name: ByteArray, 
+        symbol: ByteArray, 
+        decimals: u8, 
+        initiator:ContractAddress,
+        amount: u256
+    ) {
 
         self.name.write(name);
         self.symbol.write(symbol);
         self.decimals.write(decimals);
-
-
+        self._mint(initiator, amount);
     }
 
     #[abi(embed_v0)]
@@ -95,7 +101,7 @@ pub mod ERC20 {
         ) -> bool {
             let spender = get_caller_address();
             let allowance = self.allowances.read((sender, spender));
-            assert(allowance > amount, 'ERC20: Insufficient allowance');
+            assert(allowance >= amount, 'ERC20: Insufficient allowance');
             self._transfer(sender, recipient, amount);
             true
         }
@@ -151,7 +157,7 @@ pub mod ERC20 {
 
             self.balance.write(to, self.balance.read(to) + amount);
             self.total_supply.write(self.total_supply.read() + amount);
-            self.emit(Transfer{ from:Zero::zero(), to: to, amount: amount});
+            self.emit(Transfer{ from:Zero::zero(), to: to, value: amount});
         }
     }
 }
